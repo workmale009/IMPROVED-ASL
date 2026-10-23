@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASL Multimodal Wizard Translator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .cursor-active {
+            border-bottom: 4px solid #3b82f6;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { border-color: #3b82f6; }
+            50% { border-color: #93c5fd; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- Header Navigation -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
+            <h1 class="text-xl font-bold text-blue-400 flex items-center gap-2">
+                <i class="fa-solid fa-hands-asl"></i> ASL Multimodal Wizard
+            </h1>
+            
+            <!-- Group Selector displaying all words -->
+            <div class="flex items-center gap-2">
+                <label for="groupSelect" class="text-sm font-medium text-slate-400">Sign Model Group:</label>
+                <select id="groupSelect" class="bg-slate-700 text-white rounded border border-slate-600 px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 max-w-md">
+                    <!-- Populated dynamically without truncating class words -->
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Video Feed & Group Words Overview -->
+        <div class="lg:col-span-7 flex flex-col gap-4">
+            <div class="relative bg-black rounded-xl overflow-hidden border border-slate-700 shadow-2xl aspect-video flex items-center justify-center">
+                <img id="videoFeed" src="/video_feed" class="w-full h-full object-cover" alt="Video Stream">
+                
+                <!-- Latched Sign Badge Overlay -->
+                <div class="absolute top-4 left-4 bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg px-4 py-2 flex items-center gap-3">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Latched Sign:</span>
+                    <span id="latchedSignText" class="text-lg font-bold text-green-400">WAITING...</span>
+                </div>
+            </div>
+
+            <!-- Full Group Words Display Card -->
+            <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-3">
+                <div class="text-xs font-semibold uppercase text-slate-400 mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-blue-400"></i> All Available Signs in Selected Group:
+                </div>
+                <div id="availableWordsContainer" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    <!-- Words rendered via JS -->
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-emerald-800/70 rounded-lg p-3 flex flex-col gap-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <div class="text-xs font-semibold uppercase text-emerald-300">Word Sequence Pilot</div>
+                        <div class="text-xs text-slate-400">Candidate vocabulary: need, dance, eat</div>
+                    </div>
+                    <span id="wordModeStatus" class="text-xs text-slate-300">Checking model...</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button id="btnStartWordClip" onclick="startWordClip()" class="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium px-3 py-2 rounded border border-emerald-500/40" disabled>
+                        Start Word Clip
+                    </button>
+                    <button id="btnFinishWordClip" onclick="finishWordClip()" class="bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium px-3 py-2 rounded border border-amber-500/40" disabled>
+                        Finish & Predict
+                    </button>
+                    <button id="btnAddWordClip" onclick="addWordPrediction()" class="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium px-3 py-2 rounded border border-blue-500/40" disabled>
+                        Add to Sequence
+                    </button>
+                </div>
+                <div id="wordPredictionResult" class="text-sm text-slate-200" aria-live="polite">No word clip recorded.</div>
+            </div>
+
+            <!-- Keyboard Shortcuts Helper -->
+            <div class="bg-slate-800/60 border border-slate-700 rounded-lg p-3 grid grid-cols-4 gap-2 text-center text-xs text-slate-300">
+                <div class="bg-slate-700/50 p-2 rounded border border-slate-600">
+                    <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-500 font-mono text-blue-300">Enter</kbd> Confirm
+                </div>
+                <div class="bg-slate-700/50 p-2 rounded border border-slate-600">
+                    <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-500 font-mono text-blue-300">← / →</kbd> Move Cursor
+                </div>
+                <div class="bg-slate-700/50 p-2 rounded border border-slate-600">
+                    <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-500 font-mono text-blue-300">Backspace</kbd> Delete
+                </div>
+                <div class="bg-slate-700/50 p-2 rounded border border-slate-600">
+                    <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-500 font-mono text-blue-300">Tab</kbd> Toggle Step
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Interactive State Control & Output -->
+        <div class="lg:col-span-5 flex flex-col gap-4">
+            
+            <!-- Workflow Step Tabs -->
+            <div class="flex border-b border-slate-700">
+                <button id="tabSign" onclick="switchTab('SIGN')" class="flex-1 py-2 text-center font-semibold text-sm border-b-2 border-blue-500 text-blue-400">
+                    Step 1: Sign Sequence
+                </button>
+                <button id="tabEmotion" onclick="switchTab('EMOTION')" class="flex-1 py-2 text-center font-semibold text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-200">
+                    Step 2: Facial Tone
+                </button>
+            </div>
+
+            <!-- Tab 1: Sign Sequence Workspace -->
+            <div id="panelSign" class="flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Confirmed Sequence</h2>
+                        <button onclick="clearAll()" class="text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 px-2 py-1 rounded border border-red-500/30 transition">
+                            Clear All
+                        </button>
+                    </div>
+
+                    <!-- Interactive Sign Chips -->
+                    <div id="signContainer" class="flex flex-wrap gap-2 p-3 bg-slate-900 rounded-lg min-h-[120px] border border-slate-700/50 items-center">
+                        <!-- Rendered via JS -->
+                    </div>
+                </div>
+
+                <div class="flex gap-2 mt-4">
+                    <button onclick="confirmSign()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition text-sm flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Confirm Sign (Enter)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 2: Facial Tone Workspace -->
+            <div id="panelEmotion" class="hidden flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col justify-between">
+                <div class="flex flex-col gap-3">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Facial Emotion Recognition</h2>
+                    
+                    <!-- Dynamic Live Emotion Permission & Calibration Controls -->
+                    <div id="permissionContainer" class="bg-slate-900/90 p-3 rounded-lg border border-slate-700 flex flex-col gap-2">
+                        <!-- Step A: Request Permission -->
+                        <button id="btnGrantPerm" onclick="requestPermission()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-video"></i> Enable Live Emotion Detection
+                        </button>
+
+                        <!-- Step B: Neutral Calibration Prompt (Hidden until permission granted) -->
+                        <button id="btnCalibrateNeutral" onclick="calibrateNeutral()" class="hidden w-full bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-face-meh"></i> Look Relaxed & Click: Capture Neutral Baseline
+                        </button>
+                    </div>
+
+                    <!-- Live Camera Feed Emotion Detection Display -->
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-700 flex flex-col gap-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-slate-400 font-semibold">Live Camera Detection:</span>
+                            <span id="cameraEmotionDisplay" class="font-bold text-sm text-amber-400">PERMISSION REQUIRED</span>
+                        </div>
+                        <div class="flex justify-between items-center border-t border-slate-800 pt-2">
+                            <span class="text-xs text-slate-400 font-semibold">Locked Emotion Tone:</span>
+                            <span id="activeEmotionDisplay" class="font-bold text-md text-blue-400">NEUTRAL</span>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-slate-400">
+                        <i class="fa-solid fa-camera text-blue-400"></i> Change your expression toward the webcam. Press <kbd class="px-1 bg-slate-700 rounded border border-slate-600 font-mono text-blue-300">Enter</kbd> to lock in the live emotion, or pick manually below:
+                    </p>
+
+                    <!-- Manual Override Grid -->
+                    <div class="grid grid-cols-2 gap-2 mt-1">
+                        <button onclick="setEmotion('HAPPY')" class="bg-slate-700/70 hover:bg-slate-600 p-2.5 rounded-lg border border-slate-600 text-left flex items-center gap-2 text-xs">
+                            <span class="text-xl">😊</span>
+                            <div><div class="font-bold">Happy</div></div>
+                        </button>
+                        <button onclick="setEmotion('ANGRY')" class="bg-slate-700/70 hover:bg-slate-600 p-2.5 rounded-lg border border-slate-600 text-left flex items-center gap-2 text-xs">
+                            <span class="text-xl">😠</span>
+                            <div><div class="font-bold">Angry</div></div>
+                        </button>
+                        <button onclick="setEmotion('SAD')" class="bg-slate-700/70 hover:bg-slate-600 p-2.5 rounded-lg border border-slate-600 text-left flex items-center gap-2 text-xs">
+                            <span class="text-xl">😢</span>
+                            <div><div class="font-bold">Sad</div></div>
+                        </button>
+                        <button onclick="setEmotion('NEUTRAL')" class="bg-slate-700/70 hover:bg-slate-600 p-2.5 rounded-lg border border-slate-600 text-left flex items-center gap-2 text-xs">
+                            <span class="text-xl">😐</span>
+                            <div><div class="font-bold">Neutral</div></div>
+                        </button>
+                    </div>
+                </div>
+
+                <button id="btnLockEmotion" onclick="confirmEmotion()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition text-sm flex items-center justify-center gap-2 mt-4">
+                    <i class="fa-solid fa-lock"></i> Lock Live Camera Emotion (Enter)
+                </button>
+            </div>
+
+            <!-- Step 3: Multimodal Synthesis Output -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col gap-3">
+                <button onclick="generateSentence()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Synthesize Sentence (Gemini)
+                </button>
+                <div class="bg-slate-900 rounded-lg p-3 border border-slate-700 min-h-[60px]">
+                    <div class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Synthesized Output</div>
+                    <p id="generatedSentence" class="text-slate-200 text-sm italic">Your synthesized sentence will appear here...</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Client Script -->
+    <script>
+        let currentTab = 'SIGN';
+        let groupsData = {};
+
+        async function loadGroups() {
+            try {
+                const res = await fetch('/api/groups_detail');
+                groupsData = await res.json();
+                
+                const select = document.getElementById('groupSelect');
+                select.innerHTML = '';
+                
+                for (const [g_id, g_info] of Object.entries(groupsData)) {
+                    const opt = document.createElement('option');
+                    opt.value = g_id;
+                    opt.innerText = g_info.display_name;
+                    select.appendChild(opt);
+                }
+
+                const stateRes = await fetch('/api/state');
+                const state = await stateRes.json();
+                if (state.selected_group && groupsData[state.selected_group]) {
+                    select.value = state.selected_group;
+                }
+
+                if (select.value) {
+                    renderAvailableWords(select.value);
+                }
+            } catch (err) {
+                console.error("Failed to load groups:", err);
+            }
+        }
+
+        function renderAvailableWords(groupId) {
+            const container = document.getElementById('availableWordsContainer');
+            container.innerHTML = '';
+            
+            if (!groupsData[groupId] || !groupsData[groupId].classes) return;
+
+            groupsData[groupId].classes.forEach(word => {
+                const badge = document.createElement('span');
+                badge.className = "px-2 py-0.5 bg-slate-700/80 text-blue-300 rounded border border-slate-600 text-xs font-mono";
+                badge.innerText = word;
+                container.appendChild(badge);
+            });
+        }
+
+        async function requestPermission() {
+            try {
+                const res = await fetch('/api/grant_emotion_permission', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    document.getElementById('btnGrantPerm').classList.add('hidden');
+                    document.getElementById('btnCalibrateNeutral').classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error("Permission request error:", err);
+            }
+        }
+
+        async function calibrateNeutral() {
+            try {
+                const res = await fetch('/api/calibrate_neutral', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const calibrateBtn = document.getElementById('btnCalibrateNeutral');
+                    calibrateBtn.className = "w-full bg-emerald-700 hover:bg-emerald-600 text-white font-semibold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-2 transition";
+                    calibrateBtn.innerHTML = `<i class="fa-solid fa-check"></i> Neutral Calibrated (Click to Recalibrate)`;
+                }
+            } catch (err) {
+                console.error("Calibration error:", err);
+            }
+        }
+
+        async function fetchState() {
+            try {
+                const res = await fetch('/api/state');
+                const data = await res.json();
+
+                const wordStatus = document.getElementById('wordModeStatus');
+                const wordResult = document.getElementById('wordPredictionResult');
+                const startWordButton = document.getElementById('btnStartWordClip');
+                const finishWordButton = document.getElementById('btnFinishWordClip');
+                const addWordButton = document.getElementById('btnAddWordClip');
+                wordStatus.innerText = data.word_status || 'Candidate word model unavailable';
+                wordStatus.className = data.word_recording ? 'text-xs text-amber-300' : 'text-xs text-slate-300';
+                startWordButton.disabled = !data.word_model_available || data.word_recording;
+                finishWordButton.disabled = !data.word_recording;
+                addWordButton.disabled = !data.word_prediction || data.word_recording;
+                wordResult.innerText = data.word_prediction
+                    ? `Candidate: ${data.word_prediction} (${data.word_confidence}%, ${data.word_frame_count} frames)`
+                    : (data.word_recording ? `Recording... ${data.word_frame_count} detected-hand frames` : 'No word clip predicted yet.');
+                
+                // Update Latched Sign
+                const latchedText = document.getElementById('latchedSignText');
+                if (data.last_valid_sign) {
+                    latchedText.innerText = `${data.last_valid_sign} (${data.last_confidence}%)`;
+                    latchedText.className = "text-lg font-bold text-green-400";
+                } else {
+                    latchedText.innerText = "WAITING FOR HANDS...";
+                    latchedText.className = "text-lg font-bold text-slate-500";
+                }
+
+                // Render Signs & Cursor
+                renderSigns(data.signs, data.cursor_index);
+                
+                // Update UI state for Permission and Calibration controls
+                if (data.permission_granted) {
+                    document.getElementById('btnGrantPerm').classList.add('hidden');
+                    document.getElementById('btnCalibrateNeutral').classList.remove('hidden');
+                }
+                
+                // Update Live Camera & Locked Emotion Badges
+                const camDisplay = document.getElementById('cameraEmotionDisplay');
+                if (data.permission_granted) {
+                    camDisplay.innerText = `${data.camera_detected_emotion} (${data.emotion_confidence}%)`;
+                    camDisplay.className = "font-bold text-md text-emerald-400";
+                } else {
+                    camDisplay.innerText = "PERMISSION REQUIRED";
+                    camDisplay.className = "font-bold text-sm text-amber-400";
+                }
+
+                document.getElementById('activeEmotionDisplay').innerText = data.locked_emotion;
+            } catch (err) {
+                console.error("State sync error:", err);
+            }
+        }
+
+        function renderSigns(signs, cursorIndex) {
+            const container = document.getElementById('signContainer');
+            container.innerHTML = '';
+
+            if (!signs || signs.length === 0) {
+                container.innerHTML = `<span class="text-slate-500 text-xs italic">No signs confirmed yet. Hold a sign and press Enter.</span>`;
+                return;
+            }
+
+            signs.forEach((sign, idx) => {
+                const chip = document.createElement('div');
+                const isCursor = idx === cursorIndex;
+                
+                chip.className = `px-3 py-1.5 rounded-md font-mono text-sm font-semibold flex items-center gap-2 ${
+                    isCursor ? 'bg-blue-600 text-white cursor-active' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                }`;
+                chip.innerText = sign;
+                container.appendChild(chip);
+            });
+
+            if (cursorIndex === signs.length) {
+                const endCursor = document.createElement('div');
+                endCursor.className = 'w-2 h-6 bg-blue-500 animate-pulse rounded';
+                container.appendChild(endCursor);
+            }
+        }
+
+        async function confirmSign() {
+            await fetch('/api/confirm_sign', { method: 'POST' });
+            fetchState();
+        }
+
+        async function startWordClip() {
+            const response = await fetch('/api/word_record/start', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) window.alert(data.message || 'Could not start word recording.');
+            fetchState();
+        }
+
+        async function finishWordClip() {
+            const response = await fetch('/api/word_record/finish', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) window.alert(data.message || 'Could not classify word clip.');
+            fetchState();
+        }
+
+        async function addWordPrediction() {
+            const response = await fetch('/api/word_record/add', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) window.alert(data.message || 'No candidate word to add.');
+            fetchState();
+        }
+
+        async function confirmEmotion() {
+            await fetch('/api/confirm_emotion', { method: 'POST' });
+            fetchState();
+        }
+
+        async function setEmotion(emotion) {
+            await fetch('/api/confirm_emotion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ emotion })
+            });
+            fetchState();
+        }
+
+        async function navigateCursor(direction) {
+            await fetch('/api/navigate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ direction })
+            });
+            fetchState();
+        }
+
+        async function deleteSign() {
+            await fetch('/api/delete_sign', { method: 'POST' });
+            fetchState();
+        }
+
+        async function clearAll() {
+            await fetch('/api/clear', { method: 'POST' });
+            fetchState();
+        }
+
+        async function generateSentence() {
+            const outputEl = document.getElementById('generatedSentence');
+            outputEl.innerText = "Synthesizing sentence with Gemini...";
+            outputEl.className = "text-blue-400 text-sm animate-pulse";
+
+            try {
+                const res = await fetch('/api/generate', { method: 'POST' });
+                const data = await res.json();
+                if (data.sentence) {
+                    outputEl.innerText = `"${data.sentence}"`;
+                    outputEl.className = "text-green-400 font-medium text-sm";
+                } else {
+                    outputEl.innerText = data.error || "Generation failed";
+                    outputEl.className = "text-red-400 text-sm";
+                }
+            } catch (err) {
+                outputEl.innerText = "Error connecting to backend server.";
+                outputEl.className = "text-red-400 text-sm";
+            }
+        }
+
+        async function switchTab(tab) {
+            currentTab = tab;
+            await fetch('/api/tab', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tab })
+            });
+
+            const tabSign = document.getElementById('tabSign');
+            const tabEmotion = document.getElementById('tabEmotion');
+            const panelSign = document.getElementById('panelSign');
+            const panelEmotion = document.getElementById('panelEmotion');
+
+            if (tab === 'SIGN') {
+                tabSign.className = "flex-1 py-2 text-center font-semibold text-sm border-b-2 border-blue-500 text-blue-400";
+                tabEmotion.className = "flex-1 py-2 text-center font-semibold text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-200";
+                panelSign.classList.remove('hidden');
+                panelEmotion.classList.add('hidden');
+            } else {
+                tabEmotion.className = "flex-1 py-2 text-center font-semibold text-sm border-b-2 border-blue-500 text-blue-400";
+                tabSign.className = "flex-1 py-2 text-center font-semibold text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-200";
+                panelEmotion.classList.remove('hidden');
+                panelSign.classList.add('hidden');
+            }
+        }
+
+        // Global Keyboard Event Listener
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentTab === 'SIGN') {
+                    confirmSign();
+                } else {
+                    confirmEmotion();
+                }
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateCursor('left');
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateCursor('right');
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                deleteSign();
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                switchTab(currentTab === 'SIGN' ? 'EMOTION' : 'SIGN');
+            }
+        });
+
+        // Group Selector Change Listener
+        document.getElementById('groupSelect').addEventListener('change', async (e) => {
+            const groupId = e.target.value;
+            renderAvailableWords(groupId);
+            await fetch('/api/group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_id: groupId })
+            });
+        });
+
+        // Initialize Page
+        loadGroups();
+        setInterval(fetchState, 200);
+    </script>
+</body>
+</html>
